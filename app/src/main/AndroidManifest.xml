@@ -1,0 +1,46 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="fr.ravenfeld.example.livewallpaper"
+    android:versionCode="1"
+    android:versionName="1.0" >
+
+    <uses-sdk
+        android:minSdkVersion="8"
+        android:targetSdkVersion="19" />
+
+    <uses-feature android:name="android.software.live_wallpaper" />
+
+    <application
+        android:allowBackup="true"
+        android:icon="@drawable/ic_launcher"
+        android:label="@string/wallpaper_application_title"
+         >
+        <activity
+            android:name="fr.ravenfeld.example.livewallpaper.WallpaperActivity"
+            android:label="@string/wallpaper_application_title" >
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        <activity
+            android:name="fr.ravenfeld.example.livewallpaper.WallpaperSettingsActivity"
+            android:exported="true"
+            android:label="@string/pref_screen_title" >
+        </activity>
+
+        <service
+            android:name="fr.ravenfeld.example.livewallpaper.Wallpaper"
+            android:label="@string/wallpaper_service_title"
+            android:permission="android.permission.BIND_WALLPAPER" >
+            <intent-filter>
+                <action android:name="android.service.wallpaper.WallpaperService" />
+            </intent-filter>
+
+            <meta-data
+                android:name="android.service.wallpaper"
+                android:resource="@xml/wallpaper" />
+        </service>
+    </application>
+
+</manifest>
