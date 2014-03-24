@@ -90,8 +90,11 @@ public class Wallpaper extends WallpaperService {
             if(xOffsetStep>0.0f){
                 mOffsetsDetector.setScreens((int)(1f/xOffsetStep));
             }
-            if(xOffset!=0.5f){
+            if(xOffset!=0.5f) {
                 mScrollingWorking = true;
+            }
+            if(mOffsetsDetector.getOffsetXCurrent()!=0.5f && xOffset!=mOffsetsDetector.getOffsetXCurrent()){
+                xOffset=mOffsetsDetector.getOffsetXCurrent();
             }
             mScene.onOffsetsChanged(xOffset, yOffset, xOffsetStep, yOffsetStep, xPixelOffset, yPixelOffset);
         }

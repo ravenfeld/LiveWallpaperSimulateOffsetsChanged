@@ -7,20 +7,25 @@ import android.view.VelocityTracker;
 import android.view.ViewConfiguration;
 
 public class OffsetsDetector {
+
     private static final String TAG = "OffsetsDetector";
     private final OnOffsetsListener mListener;
-    Animate mSwipeAnimation = null;
+    Animate mSwipeAnim = null;
     private GestureThread mGestureThread;
     private int mMaximumFlingVelocity;
     private VelocityTracker mVelocityTracker;
-    private MotionEvent mCurrentDownEvent;
-    private MotionEvent mCurrentDeltaEvent;
-    private float mTouchOffsetX = -1.0F;
-    private float mXOffsetDefault = 0.5f;
-    private float mYOffsetDefault = 0.5f;
-    private float mYOffsetStepDefault = 1f;
-    private int mNbScreens = 4; //0 1 2 3 4 also 5 screen actif
-    private float mXOffsetStepDefault = 1f / mNbScreens;
+    private boolean mAlwaysInTapRegion;
+    private int mTouchSlopSquare;
+    private float mLastFocusX;
+    private float mLastFocusY;
+    private float mDownFocusX;
+    private float mDownFocusY;
+    private float mTotalTouchOffsetX = -1.0F;
+    private float xOffsetDefault = 0.5f;
+    private float yOffsetDefault = 0.5f;
+    private float yOffsetStepDefault = 1f;
+    private int nbScreen = 4;
+    private float xOffsetStepDefault = 1f / nbScreen;
     private int mScreenWidth;
     private boolean mManualThread;
 
@@ -38,57 +43,66 @@ public class OffsetsDetector {
         if (mListener == null) {
             throw new NullPointerException("OnGestureListener must not be null");
         }
+        int touchSlop;
+
         if (context == null) {
+            touchSlop = ViewConfiguration.getTouchSlop();
             mMaximumFlingVelocity = ViewConfiguration.getMaximumFlingVelocity();
         } else {
             final ViewConfiguration configuration = ViewConfiguration.get(context);
+            touchSlop = configuration.getScaledTouchSlop();
             mMaximumFlingVelocity = configuration.getScaledMaximumFlingVelocity();
         }
         if (!mManualThread) {
             mGestureThread = new GestureThread();
             mGestureThread.start();
         }
+        mTouchSlopSquare = touchSlop * touchSlop;
+    }
+
+    public float getOffsetXCurrent() {
+        return getViewOffset();
     }
 
     public Animate getSwipeAnimation() {
-        return mSwipeAnimation;
+        return mSwipeAnim;
     }
 
     public void swipeAnimationUpdate() {
-        if (mSwipeAnimation != null)
-            mSwipeAnimation.update();
+        if (mSwipeAnim != null)
+            mSwipeAnim.update();
     }
 
     public float getXOffsetDefault() {
-        return mXOffsetDefault;
+        return xOffsetDefault;
     }
 
     public void setXOffsetDefault(float xOffsetDefault) {
-        this.mXOffsetDefault = xOffsetDefault;
+        this.xOffsetDefault = xOffsetDefault;
     }
 
     public float getYOffsetDefault() {
-        return mYOffsetDefault;
+        return yOffsetDefault;
     }
 
     public void setYOffsetDefault(float yOffsetDefault) {
-        this.mYOffsetDefault = yOffsetDefault;
+        this.yOffsetDefault = yOffsetDefault;
     }
 
     public float getYOffsetStepDefault() {
-        return mYOffsetStepDefault;
+        return yOffsetStepDefault;
     }
 
     public void setYOffsetStepDefault(float yOffsetStepDefault) {
-        this.mYOffsetStepDefault = yOffsetStepDefault;
+        this.yOffsetStepDefault = yOffsetStepDefault;
     }
 
     public float getXOffsetStepDefault() {
-        return mXOffsetStepDefault;
+        return xOffsetStepDefault;
     }
 
-    public void setXOffsetStepDefault(float xOffsetStepDefault) {
-        this.mXOffsetStepDefault = xOffsetStepDefault;
+    public void setxOffsetStepDefault(float xOffsetStepDefault) {
+        this.xOffsetStepDefault = xOffsetStepDefault;
     }
 
     public int getScreenWidth() {
@@ -97,19 +111,19 @@ public class OffsetsDetector {
 
     public void setScreenWidth(int width) {
         this.mScreenWidth = width;
-        if (mTouchOffsetX == -1)
-            mTouchOffsetX = width * mNbScreens / 2f;
-        mListener.onOffsetsChanged(mXOffsetDefault, mYOffsetDefault, mXOffsetStepDefault, mYOffsetStepDefault);
+        if (mTotalTouchOffsetX == -1)
+            mTotalTouchOffsetX = width * nbScreen / 2f;
+        mListener.onOffsetsChanged(xOffsetDefault, yOffsetDefault, xOffsetStepDefault, yOffsetStepDefault);
 
     }
 
     public int getScreens() {
-        return mNbScreens;
+        return nbScreen;
     }
 
     public void setScreens(int nbScreen) {
-        this.mNbScreens = nbScreen;
-        mXOffsetStepDefault = 1f / this.mNbScreens;
+        this.nbScreen = nbScreen;
+        xOffsetStepDefault = 1f / this.nbScreen;
     }
 
     public void onVisibilityChanged(boolean visible) {
@@ -129,59 +143,65 @@ public class OffsetsDetector {
             mVelocityTracker = VelocityTracker.obtain();
         }
         mVelocityTracker.addMovement(event);
-        final int count = event.getPointerCount();
+
+        final float focusX = event.getX(0);
+        final float focusY = event.getY(0);
 
         switch (action & MotionEvent.ACTION_MASK) {
+            case MotionEvent.ACTION_POINTER_DOWN:
+                mDownFocusX = mLastFocusX = focusX;
+                mDownFocusY = mLastFocusY = focusY;
+                mAlwaysInTapRegion = true;
+
+                break;
             case MotionEvent.ACTION_POINTER_UP:
 
-                mVelocityTracker.computeCurrentVelocity(1000, mMaximumFlingVelocity);
-                final int upIndex = event.getActionIndex();
-                final int id1 = event.getPointerId(upIndex);
-                final float x1 = mVelocityTracker.getXVelocity(id1);
-                final float y1 = mVelocityTracker.getYVelocity(id1);
-                for (int i = 0; i < count; i++) {
-                    if (i == upIndex) continue;
-
-                    final int id2 = event.getPointerId(i);
-                    final float x = x1 * mVelocityTracker.getXVelocity(id2);
-                    final float y = y1 * mVelocityTracker.getYVelocity(id2);
-
-                    final float dot = x + y;
-                    if (dot < 0) {
-                        mVelocityTracker.clear();
-                        break;
-                    }
+                if (event.getActionIndex() == 0) {
+                    mDownFocusX = mLastFocusX = event.getX(1);
+                    mDownFocusY = mLastFocusY = event.getY(1);
                 }
                 break;
             case MotionEvent.ACTION_DOWN:
-                if (mCurrentDownEvent != null) {
-                    mCurrentDownEvent.recycle();
-                }
-                if (mCurrentDeltaEvent != null) {
-                    mCurrentDeltaEvent.recycle();
-                }
-                mCurrentDownEvent = MotionEvent.obtain(event);
-                mCurrentDeltaEvent = MotionEvent.obtain(event);
+
+                mDownFocusX = mLastFocusX = focusX;
+                mDownFocusY = mLastFocusY = focusY;
+                mAlwaysInTapRegion = true;
+
                 break;
             case MotionEvent.ACTION_MOVE:
-                mTouchOffsetX += mCurrentDeltaEvent.getX() - event.getX();
-                if (mCurrentDeltaEvent != null) {
-                    mCurrentDeltaEvent.recycle();
-                }
-                mCurrentDeltaEvent = MotionEvent.obtain(event);
+                final float scrollX = mLastFocusX - focusX;
+                final float scrollY = mLastFocusY - focusY;
+                if (mAlwaysInTapRegion) {
+                    final int deltaX = (int) (focusX - mDownFocusX);
+                    final int deltaY = (int) (focusY - mDownFocusY);
+                    int distance = (deltaX * deltaX) + (deltaY * deltaY);
+                    if (distance > mTouchSlopSquare) {
 
-                mListener.onOffsetsChanged(getViewOffset(), mYOffsetDefault, mXOffsetStepDefault, mYOffsetStepDefault);
+                        mLastFocusX = focusX;
+                        mLastFocusY = focusY;
+                        mAlwaysInTapRegion = false;
+                        mTotalTouchOffsetX += scrollX;
+                        mListener.onOffsetsChanged(getViewOffset(), yOffsetDefault, xOffsetStepDefault, yOffsetStepDefault);
+                    }
+
+                } else if ((Math.abs(scrollX) >= 1) || (Math.abs(scrollY) >= 1)) {
+
+                    mTotalTouchOffsetX += scrollX;
+                    mListener.onOffsetsChanged(getViewOffset(), yOffsetDefault, xOffsetStepDefault, yOffsetStepDefault);
+                    mLastFocusX = focusX;
+                    mLastFocusY = focusY;
+                }
                 break;
 
             case (MotionEvent.ACTION_UP):
-                final VelocityTracker velocityTracker = mVelocityTracker;
-                final int pointerId = event.getPointerId(0);
-                velocityTracker.computeCurrentVelocity(1000, mMaximumFlingVelocity);
-                final float velocityY = velocityTracker.getYVelocity(pointerId);
-                final float velocityX = velocityTracker.getXVelocity(pointerId);
 
-
-                onFling(mCurrentDownEvent, event, velocityX, velocityY);
+                if (!mAlwaysInTapRegion) {
+                    final VelocityTracker velocityTracker = mVelocityTracker;
+                    final int pointerId = event.getPointerId(0);
+                    velocityTracker.computeCurrentVelocity(1000, mMaximumFlingVelocity);
+                    final float velocityX = velocityTracker.getXVelocity(pointerId);
+                    onFling(mDownFocusX, event.getX(), velocityX);
+                }
 
                 if (mVelocityTracker != null) {
                     mVelocityTracker.recycle();
@@ -189,43 +209,49 @@ public class OffsetsDetector {
                 }
 
                 break;
+            case MotionEvent.ACTION_CANCEL:
+                cancel();
+                break;
+
         }
+    }
+
+    private void cancel() {
+        mVelocityTracker.recycle();
+        mVelocityTracker = null;
+        mAlwaysInTapRegion = false;
     }
 
     private float getViewOffset() {
-        if (mTouchOffsetX < 0.0F)
-            mTouchOffsetX = 0.0F;
-        if (mTouchOffsetX > mScreenWidth * mNbScreens)
-            mTouchOffsetX = mScreenWidth * mNbScreens;
-        return mTouchOffsetX / (float) (mScreenWidth * mNbScreens);
+        if (mTotalTouchOffsetX < 0.0F)
+            mTotalTouchOffsetX = 0.0F;
+        if (mTotalTouchOffsetX > mScreenWidth * nbScreen)
+            mTotalTouchOffsetX = mScreenWidth * nbScreen;
+        return mTotalTouchOffsetX / (float) (mScreenWidth * nbScreen);
     }
 
-    public void onFling(MotionEvent paramMotionEvent1, MotionEvent paramMotionEvent2, float paramFloat1, float paramFloat2) {
-        if (Math.abs(paramMotionEvent1.getY() - paramMotionEvent2.getY()) > 250.0F)
-            return;
-        if ((paramMotionEvent1.getX() - paramMotionEvent2.getX() > 25.0F) && (Math.abs(paramFloat1) > 500.0F)) {
+    public void onFling(float scrollDownX, Float scrollUpX, float velocityX) {
 
+        if ((scrollDownX - scrollUpX > 25.0F) && (Math.abs(velocityX) > 500.0F)) {
+            animationRightScreen();
+        } else if ((scrollDownX - scrollUpX > mScreenWidth * 0.4f)) {
             animationRightScreen();
 
-        } else if ((paramMotionEvent1.getX() - paramMotionEvent2.getX() > mScreenWidth * 0.4f)) {
-            animationRightScreen();
-
-        } else if ((paramMotionEvent1.getX() - paramMotionEvent2.getX() > 0.0F)) {
+        } else if ((scrollDownX - scrollUpX > 0.0F)) {
             animationLeftScreen();
-        } else if ((paramMotionEvent2.getX() - paramMotionEvent1.getX() > 25.0F) && (Math.abs(paramFloat1) > 500.0F) && (mTouchOffsetX > 0.0F)) {
+        } else if ((scrollUpX - scrollDownX > 25.0F) && (Math.abs(velocityX) > 500.0F) && (mTotalTouchOffsetX > 0.0F)) {
 
             animationLeftScreen();
-        } else if ((paramMotionEvent2.getX() - paramMotionEvent1.getX() > mScreenWidth * 0.4f)) {
+        } else if ((scrollUpX - scrollDownX > mScreenWidth * 0.4f)) {
             animationLeftScreen();
-        } else if ((paramMotionEvent2.getX() - paramMotionEvent1.getX() > 0.0F)) {
+        } else if ((scrollUpX - scrollDownX > 0.0F)) {
             animationRightScreen();
 
         }
-
     }
 
     private float nextScreen(float mTotalTouchOffsetX) {
-        int nb = mNbScreens;
+        int nb = nbScreen;
         while (nb >= 0) {
             if (mTotalTouchOffsetX <= mScreenWidth * nb && mTotalTouchOffsetX > mScreenWidth * (nb - 1)) {
                 break;
@@ -236,7 +262,7 @@ public class OffsetsDetector {
     }
 
     private float beforeScreen(float mTotalTouchOffsetX) {
-        int nb = mNbScreens;
+        int nb = nbScreen;
         while (nb >= 0) {
             if (mTotalTouchOffsetX <= mScreenWidth * nb && mTotalTouchOffsetX > mScreenWidth * (nb - 1)) {
                 break;
@@ -247,13 +273,13 @@ public class OffsetsDetector {
     }
 
     private void animationRightScreen() {
-        if (mTouchOffsetX < mScreenWidth * mNbScreens) {
+        if (mTotalTouchOffsetX < mScreenWidth * nbScreen) {
 
-            if (mSwipeAnimation != null) {
-                mSwipeAnimation.destroyAnimation();
+            if (mSwipeAnim != null) {
+                mSwipeAnim.destroyAnimation();
             }
-            mSwipeAnimation = new Animate(mTouchOffsetX, nextScreen(mTouchOffsetX));
-            mSwipeAnimation.setAnimationListener(new AnimateListener() {
+            mSwipeAnim = new Animate(mTotalTouchOffsetX, nextScreen(mTotalTouchOffsetX));
+            mSwipeAnim.setAnimationListener(new AnimateListener() {
                 public void AnimationEnded(Animate paramAnonymousAnimate) {
 
                 }
@@ -262,21 +288,22 @@ public class OffsetsDetector {
                 }
 
                 public void AnimationUpdated(Animate paramAnonymousAnimate) {
-                    mTouchOffsetX = paramAnonymousAnimate.getCurrentValue();
-                    mListener.onOffsetsChanged(getViewOffset(), mYOffsetDefault, mXOffsetStepDefault, mYOffsetStepDefault);
+                    mTotalTouchOffsetX = paramAnonymousAnimate.getCurrentValue();
+                    mListener.onOffsetsChanged(getViewOffset(), yOffsetDefault, xOffsetStepDefault, yOffsetStepDefault);
                 }
             });
-            mSwipeAnimation.startAnimation();
+            mSwipeAnim.startAnimation();
         }
     }
 
     private void animationLeftScreen() {
-        if (mTouchOffsetX > 0) {
-            if (mSwipeAnimation != null) {
-                mSwipeAnimation.destroyAnimation();
+
+        if (mTotalTouchOffsetX > 0) {
+            if (mSwipeAnim != null) {
+                mSwipeAnim.destroyAnimation();
             }
-            mSwipeAnimation = new Animate(mTouchOffsetX, beforeScreen(mTouchOffsetX));
-            mSwipeAnimation.setAnimationListener(new AnimateListener() {
+            mSwipeAnim = new Animate(mTotalTouchOffsetX, beforeScreen(mTotalTouchOffsetX));
+            mSwipeAnim.setAnimationListener(new AnimateListener() {
                 public void AnimationEnded(Animate paramAnonymousAnimate) {
                 }
 
@@ -284,11 +311,11 @@ public class OffsetsDetector {
                 }
 
                 public void AnimationUpdated(Animate paramAnonymousAnimate) {
-                    mTouchOffsetX = paramAnonymousAnimate.getCurrentValue();
-                    mListener.onOffsetsChanged(getViewOffset(), mYOffsetDefault, mXOffsetStepDefault, mYOffsetStepDefault);
+                    mTotalTouchOffsetX = paramAnonymousAnimate.getCurrentValue();
+                    mListener.onOffsetsChanged(getViewOffset(), yOffsetDefault, xOffsetStepDefault, yOffsetStepDefault);
                 }
             });
-            mSwipeAnimation.startAnimation();
+            mSwipeAnim.startAnimation();
         }
     }
 
@@ -345,7 +372,9 @@ public class OffsetsDetector {
                 } catch (InterruptedException ex) {
                     Log.e(TAG, "Exception during Thread.sleep().", ex);
                 }
+
             }
+
         }
 
         public void stopThread() {
@@ -354,12 +383,14 @@ public class OffsetsDetector {
                 running = false;
                 pauseLock.notifyAll();
             }
+            Log.d(TAG, "Stopped thread (" + this.getId() + ")");
         }
 
         public void pauseThread() {
             synchronized (pauseLock) {
                 paused = true;
             }
+            Log.d(TAG, "Paused thread (" + this.getId() + ")");
         }
 
         public void resumeThread() {
@@ -367,6 +398,7 @@ public class OffsetsDetector {
                 paused = false;
                 pauseLock.notifyAll();
             }
+            Log.d(TAG, "Resumed thread (" + this.getId() + ")");
         }
 
         private void waitOnPause() {
