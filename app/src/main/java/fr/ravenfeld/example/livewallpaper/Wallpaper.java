@@ -84,9 +84,15 @@ public class Wallpaper extends WallpaperService {
         public void onOffsetsChanged(float xOffset, float yOffset, float xOffsetStep, float yOffsetStep,
                                      int xPixelOffset, int yPixelOffset) {
             super.onOffsetsChanged(xOffset, yOffset, xOffsetStep, yOffsetStep, xPixelOffset, yPixelOffset);
-            if (isPreview())
+            if (isPreview()) {
                 xOffset = 0.5f;
-            mScrollingWorking = true;
+            }
+            if(xOffsetStep>0.0f){
+                mOffsetsDetector.setScreens((int)(1f/xOffsetStep));
+            }
+            if(xOffset!=0.5f){
+                mScrollingWorking = true;
+            }
             mScene.onOffsetsChanged(xOffset, yOffset, xOffsetStep, yOffsetStep, xPixelOffset, yPixelOffset);
         }
         private void joinThread(Thread thread) {
