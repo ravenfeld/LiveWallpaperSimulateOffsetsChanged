@@ -250,7 +250,7 @@ public class OffsetsDetector {
         if (mTouchOffsetX < mScreenWidth * mNbScreens) {
 
             if (mSwipeAnimation != null) {
-                mSwipeAnimation.endAnimation();
+                mSwipeAnimation.destroyAnimation();
             }
             mSwipeAnimation = new Animate(mTouchOffsetX, nextScreen(mTouchOffsetX));
             mSwipeAnimation.setAnimationListener(new AnimateListener() {
@@ -271,23 +271,25 @@ public class OffsetsDetector {
     }
 
     private void animationLeftScreen() {
-        if (mSwipeAnimation != null) {
-            mSwipeAnimation.endAnimation();
+        if (mTouchOffsetX > 0) {
+            if (mSwipeAnimation != null) {
+                mSwipeAnimation.destroyAnimation();
+            }
+            mSwipeAnimation = new Animate(mTouchOffsetX, beforeScreen(mTouchOffsetX));
+            mSwipeAnimation.setAnimationListener(new AnimateListener() {
+                public void AnimationEnded(Animate paramAnonymousAnimate) {
+                }
+
+                public void AnimationStarted(Animate paramAnonymousAnimate) {
+                }
+
+                public void AnimationUpdated(Animate paramAnonymousAnimate) {
+                    mTouchOffsetX = paramAnonymousAnimate.getCurrentValue();
+                    mListener.onOffsetsChanged(getViewOffset(), mYOffsetDefault, mXOffsetStepDefault, mYOffsetStepDefault);
+                }
+            });
+            mSwipeAnimation.startAnimation();
         }
-        mSwipeAnimation = new Animate(mTouchOffsetX, beforeScreen(mTouchOffsetX));
-        mSwipeAnimation.setAnimationListener(new AnimateListener() {
-            public void AnimationEnded(Animate paramAnonymousAnimate) {
-            }
-
-            public void AnimationStarted(Animate paramAnonymousAnimate) {
-            }
-
-            public void AnimationUpdated(Animate paramAnonymousAnimate) {
-                mTouchOffsetX = paramAnonymousAnimate.getCurrentValue();
-                mListener.onOffsetsChanged(getViewOffset(), mYOffsetDefault, mXOffsetStepDefault, mYOffsetStepDefault);
-            }
-        });
-        mSwipeAnimation.startAnimation();
     }
 
     public void onDestroy() {
